@@ -1,0 +1,206 @@
+package com.delta.rm.bre.autofulfillment.rules;
+
+import com.delta.rm.bre.autofulfillment.model.*;
+import java.time.LocalDate;
+import java.util.List;
+
+// Rule 1: Govt Travel as FOP
+rule "IE_FOP_Row1_GovtTravel"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"), $fops : formOfPayments )
+    FormOfPayment( fopType in ("GR") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Govt Travel must be fulfilled manually"),
+        setReasonCode("CE_FF_241")
+    }
+end
+
+// Rule 2: Form of payment Alipay or Paypal
+rule "IE_FOP_Row2_AlipayPaypal"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, $fops : formOfPayments )
+    FormOfPayment( transactionText in ("ALIPAY", "PAYPAL") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to Alipay/Paypal"),
+        setReasonCode("CE_FF_240")
+    }
+end
+
+// Rule 3: Exclude FOP with Cash or Check
+rule "IE_FOP_Row3_CashOrCheck"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"), 
+                                   formOfPayments != null, formOfPayments.size() <= 2, $fops : formOfPayments )
+    FormOfPayment( fopType in ("CA", "CK") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to cash or check"),
+        setReasonCode("CE_FF_239")
+    }
+end
+
+// Rule 4: Refunding gift card to credit card
+rule "IE_FOP_Row4_GiftCard"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, fopHistory != null, $fopHist : fopHistory )
+    FopHistory( paymentDocumentTypeCode == "GIF" ) from $fopHist
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to paymentDocumentTypeCode is giftcard"),
+        setReasonCode("CE_FF_235")
+    }
+end
+
+// Rule 5: Exclude Multi FOP with China Union Pay
+rule "IE_FOP_Row5_ChinaUnionPay"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $channel : ChannelInfo()
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"),
+                                   formOfPayments != null, formOfPayments.size() <= 2, $fops : formOfPayments,
+                                   issueLocalDate != null )
+    eval(LocalDate.now().isAfter(LocalDate.parse($accDoc.getIssueLocalDate()).plusDays(180)))
+    FormOfPayment( fopType == "CC", networkCode == "DB", paymentCardNum != null, 
+                   paymentCardNum.length() > 5, paymentCardNum.substring(0, 5) == "00000" ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to Cancel after 180 days from Issue date for China Union Pay"),
+        setReasonCode("CE_FF_234")
+    }
+end
+
+// Rule 6: Exclude Multi FOP Check with less than 20 days
+rule "IE_FOP_Row6_CheckLessThan20Days"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"),
+                                   formOfPayments != null, formOfPayments.size() <= 2, 
+                                   amounts != null, issueLocalDate != null, $fops : formOfPayments, $amts : amounts )
+    eval(LocalDate.now().isBefore(LocalDate.parse($accDoc.getIssueLocalDate()).plusDays(19)))
+    FormOfPayment( fopType in ("CK") ) from $fops
+    $amt : Amount( amountTypeCode == "TotalAmount", $price : amount ) from $amts
+    CurrencyEquivalentPrice( currencyCode in ("USD", "CAD") ) from $price.currencyEquivalentPrice
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to Cancel within 20 days from Issue date for Check FOP"),
+        setReasonCode("CE_FF_229")
+    }
+end
+
+// Rule 7: Exclude Multi FOP with invalid Currency Code
+rule "IE_FOP_Row7_InvalidCurrency"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"),
+                                   formOfPayments != null, formOfPayments.size() <= 2, 
+                                   amounts != null, $fops : formOfPayments, $amts : amounts )
+    FormOfPayment( fopType in ("CA", "CK") || (fopType == "MS" && networkCode != "TP") ) from $fops
+    $amt : Amount( amountTypeCode == "TotalAmount", $price : amount ) from $amts
+    CurrencyEquivalentPrice( currencyCode not in ("USD", "CAD") ) from $price.currencyEquivalentPrice
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to non-USD, CAD cash or check"),
+        setReasonCode("CE_FF_228")
+    }
+end
+
+// Rule 18: Exclude When Card Number Missing
+rule "IE_FOP_Row18_CardNumberMissing"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"),
+                                   formOfPayments != null, formOfPayments.size() <= 2, $fops : formOfPayments )
+    FormOfPayment( fopType not in ("CA", "CK", "DT", "FR", "MC"), 
+                   (paymentCardNum == null || paymentCardNum == "" || networkCode == null || networkCode == "") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to missing card number"),
+        setReasonCode("CE_FF_215")
+    }
+end
+
+// Rule 19: Exclude Multi FOP with invalid Fop Indication code
+rule "IE_FOP_Row19_InvalidFopIndication"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentConnectionTypeCode not in ("AWD"),
+                                   formOfPayments != null, formOfPayments.size() <= 2, $fops : formOfPayments )
+    FormOfPayment( fopIndicationCode != null, fopIndicationCode not in ("2", "3", "", "5") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to invalid Fop Indication Code"),
+        setReasonCode("CE_FF_214")
+    }
+end
+
+// Rule 21: Exclude Exchange for Multi FOP Greater Than 2
+rule "IE_FOP_Row21_MultiFOPGreaterThan2"
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, formOfPayments != null, formOfPayments.size() > 2, exchange == "N" )
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "false", macEMD == "false" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Ineligible due to even exchange for more than two FOP"),
+        setReasonCode("CE_FF_212")
+    }
+end
+
+// Rule 25: Update Fulfillable - Final Check
+rule "IE_FOP_Row25_FinalCheck"
+    salience -1
+    no-loop true
+    ruleflow-group "Fulfillment_InEligible_FOP"
+    dialect "mvel"
+when
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum != null, fulfillable == null )
+then
+    modify($ctx) {
+        setFulfillable("true")
+    }
+end

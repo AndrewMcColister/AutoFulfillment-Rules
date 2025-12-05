@@ -1,0 +1,25 @@
+package com.delta.rm.bre.autofulfillment.rules;
+
+import com.delta.rm.bre.autofulfillment.model.*;
+
+// Rule 1: FopHistory - Same Credit Card Check (ADR-001)
+// This rule uses the isAllFopsSameCreditCard() helper method from AccountableDocument
+// which encapsulates the complex accumulate logic from the legacy DRL
+rule "FopHistory_Row1_SameCreditCard"
+    salience 1
+    no-loop true
+    ruleflow-group "Fulfillment_FopHistory"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, 
+                                   documentCategoryCode == "T",
+                                   fopHistory != null,
+                                   allFopsSameCreditCard == true )
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, rfcEligible == "false" )
+then
+    modify($ctx) {
+        setFulfillable("true"),
+        setFulfillabilityReason("Same CC as fop in the fop history"),
+        setReasonCode("CE_FF_001")
+    }
+end

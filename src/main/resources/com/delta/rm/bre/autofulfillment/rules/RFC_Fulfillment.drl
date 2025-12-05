@@ -1,0 +1,160 @@
+package com.delta.rm.bre.autofulfillment.rules;
+
+import com.delta.rm.bre.autofulfillment.model.*;
+import java.time.LocalDate;
+
+// Rule 1: Parent level Auto fulfillment - mixed RFC eligible
+rule "RFC_Row1_ParentLevel"
+    salience 5
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    TicketDtl( isAnyDocumentRFCEligible == true, isAnyDocumentNotRFCEligible == true )
+    $ctx : AccountableDocumentContextWrapper( fulfillable == null )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 2: Agency Ticket fulfillment (flag false)
+rule "RFC_Row2_AgencyTicketFlagFalse"
+    salience 4
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentCategoryCode == "T", 
+                                   accountableDocumentNum.length() >= 5,
+                                   accountableDocumentNum.substring(3, 5) not in ("21", "23", "24", "14") )
+    Flag( filterFeature == "newRFCGatekeep", filterValue == "false" )
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 3: Agency Ticket fulfillment < 01June23
+rule "RFC_Row3_AgencyTicketBeforeJune23"
+    salience 4
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentCategoryCode == "T",
+                                   accountableDocumentNum.length() >= 5,
+                                   accountableDocumentNum.substring(3, 5) not in ("21", "23", "24", "14"),
+                                   issueLocalDate != null )
+    eval(LocalDate.parse($accDoc.getIssueLocalDate()).isBefore(LocalDate.parse("2023-06-01")))
+    Flag( filterFeature == "newRFCGatekeep", filterValue == "true" )
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 4: Agency Ticket fulfillment >= 01June23
+rule "RFC_Row4_AgencyTicketAfterJune23"
+    salience 4
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentCategoryCode == "T",
+                                   accountableDocumentNum.length() >= 6,
+                                   accountableDocumentNum.substring(3, 5) not in ("21", "22", "23", "24"),
+                                   accountableDocumentNum.substring(3, 6) not in ("252", "253", "254", "255", "256", "257", "258", "259"),
+                                   issueLocalDate != null )
+    eval(LocalDate.parse($accDoc.getIssueLocalDate()).compareTo(LocalDate.parse("2023-06-01")) >= 0)
+    Flag( filterFeature == "newRFCGatekeep", filterValue == "true" )
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 5: Form Of Payment Cash
+rule "RFC_Row5_FOPCash"
+    salience 3
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, $fops : formOfPayments )
+    FormOfPayment( fopType in ("CA") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 6: Form Of Payment Spl Check
+rule "RFC_Row6_FOPSplCheck"
+    salience 3
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, $fops : formOfPayments )
+    FormOfPayment( fopType in ("SC") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 7: Form Of Payment Check
+rule "RFC_Row7_FOPCheck"
+    salience 3
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, $fops : formOfPayments )
+    FormOfPayment( fopType in ("CK") ) from $fops
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false")
+    }
+end
+
+// Rule 8: Reissued award document inside RFC window
+rule "RFC_Row8_ReissuedAward"
+    salience 2
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum, documentCategoryCode == "T", documentConnectionTypeCode == "AWD",
+                                   $exTxnSum : exchangedTransactionSummary )
+    $exDoc : ExchangedAccountableDocument( $exDocNum : exchangedDocNum, originalDocNum != $exDocNum, primaryOrSecondaryCode == "P" ) from $exTxnSum.exchangedAccountableDocuments
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("false"),
+        setFulfillabilityReason("Reissued award document inside RFC window"),
+        setReasonCode("CE_FF_245")
+    }
+end
+
+// Rule 9: Final Check - Set fulfillable true
+rule "RFC_Row9_FinalCheck"
+    salience 1
+    no-loop true
+    ruleflow-group "RFC_Fulfillment"
+    dialect "mvel"
+when
+    $accDoc : AccountableDocument( $accDocNum : accountableDocumentNum )
+    $ctx : AccountableDocumentContextWrapper( accountableDocumentNum == $accDocNum, fulfillable == null, rfcEligible == "true" )
+then
+    modify($ctx) {
+        setFulfillable("true")
+    }
+end
