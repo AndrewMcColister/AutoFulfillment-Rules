@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                   xmlns:drools="http://www.jboss.org/drools"
+                   id="Definition"
+                   targetNamespace="http://www.jboss.org/drools">
+
+  <bpmn2:process id="AutoFulfillmentRulesProcess" 
+                 drools:packageName="com.delta.rm.bre.autofulfillment.rules" 
+                 drools:version="1.0" 
+                 name="AutoFulfillment Rules Process" 
+                 isExecutable="true">
+
+    <bpmn2:startEvent id="StartEvent" name="Start">
+      <bpmn2:outgoing>Flow_Start_To_IE_Doc</bpmn2:outgoing>
+    </bpmn2:startEvent>
+
+    <bpmn2:businessRuleTask id="Task_IE_Document" 
+                            name="InEligible Document Rules"
+                            drools:ruleFlowGroup="Fulfillment_InEligible_Document">
+      <bpmn2:incoming>Flow_Start_To_IE_Doc</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_IE_Doc_To_RFC</bpmn2:outgoing>
+    </bpmn2:businessRuleTask>
+
+    <bpmn2:businessRuleTask id="Task_RFC" 
+                            name="RFC Fulfillment Rules"
+                            drools:ruleFlowGroup="RFC_Fulfillment">
+      <bpmn2:incoming>Flow_IE_Doc_To_RFC</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_RFC_To_IE_FOP</bpmn2:outgoing>
+    </bpmn2:businessRuleTask>
+
+    <bpmn2:businessRuleTask id="Task_IE_FOP" 
+                            name="InEligible FOP Rules"
+                            drools:ruleFlowGroup="Fulfillment_InEligible_FOP">
+      <bpmn2:incoming>Flow_RFC_To_IE_FOP</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_IE_FOP_To_History</bpmn2:outgoing>
+    </bpmn2:businessRuleTask>
+
+    <bpmn2:businessRuleTask id="Task_FopHistory" 
+                            name="FOP History Rules"
+                            drools:ruleFlowGroup="Fulfillment_FopHistory">
+      <bpmn2:incoming>Flow_IE_FOP_To_History</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_History_To_End</bpmn2:outgoing>
+    </bpmn2:businessRuleTask>
+
+    <bpmn2:endEvent id="EndEvent" name="End">
+      <bpmn2:incoming>Flow_History_To_End</bpmn2:incoming>
+    </bpmn2:endEvent>
+
+    <bpmn2:sequenceFlow id="Flow_Start_To_IE_Doc" sourceRef="StartEvent" targetRef="Task_IE_Document"/>
+    <bpmn2:sequenceFlow id="Flow_IE_Doc_To_RFC" sourceRef="Task_IE_Document" targetRef="Task_RFC"/>
+    <bpmn2:sequenceFlow id="Flow_RFC_To_IE_FOP" sourceRef="Task_RFC" targetRef="Task_IE_FOP"/>
+    <bpmn2:sequenceFlow id="Flow_IE_FOP_To_History" sourceRef="Task_IE_FOP" targetRef="Task_FopHistory"/>
+    <bpmn2:sequenceFlow id="Flow_History_To_End" sourceRef="Task_FopHistory" targetRef="EndEvent"/>
+
+  </bpmn2:process>
+
+  <!-- BPMN Diagram Interchange - Visual Layout -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="AutoFulfillmentRulesProcess">
+      
+      <!-- Start Event -->
+      <bpmndi:BPMNShape id="StartEvent_di" bpmnElement="StartEvent">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="158" y="145" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      
+      <!-- Task: InEligible Document Rules -->
+      <bpmndi:BPMNShape id="Task_IE_Document_di" bpmnElement="Task_IE_Document">
+        <dc:Bounds x="240" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Task: RFC Fulfillment Rules -->
+      <bpmndi:BPMNShape id="Task_RFC_di" bpmnElement="Task_RFC">
+        <dc:Bounds x="390" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Task: InEligible FOP Rules -->
+      <bpmndi:BPMNShape id="Task_IE_FOP_di" bpmnElement="Task_IE_FOP">
+        <dc:Bounds x="540" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Task: FOP History Rules -->
+      <bpmndi:BPMNShape id="Task_FopHistory_di" bpmnElement="Task_FopHistory">
+        <dc:Bounds x="690" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- End Event -->
+      <bpmndi:BPMNShape id="EndEvent_di" bpmnElement="EndEvent">
+        <dc:Bounds x="842" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="850" y="145" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      
+      <!-- Sequence Flows -->
+      <bpmndi:BPMNEdge id="Flow_Start_To_IE_Doc_di" bpmnElement="Flow_Start_To_IE_Doc">
+        <di:waypoint x="188" y="120" />
+        <di:waypoint x="240" y="120" />
+      </bpmndi:BPMNEdge>
+      
+      <bpmndi:BPMNEdge id="Flow_IE_Doc_To_RFC_di" bpmnElement="Flow_IE_Doc_To_RFC">
+        <di:waypoint x="340" y="120" />
+        <di:waypoint x="390" y="120" />
+      </bpmndi:BPMNEdge>
+      
+      <bpmndi:BPMNEdge id="Flow_RFC_To_IE_FOP_di" bpmnElement="Flow_RFC_To_IE_FOP">
+        <di:waypoint x="490" y="120" />
+        <di:waypoint x="540" y="120" />
+      </bpmndi:BPMNEdge>
+      
+      <bpmndi:BPMNEdge id="Flow_IE_FOP_To_History_di" bpmnElement="Flow_IE_FOP_To_History">
+        <di:waypoint x="640" y="120" />
+        <di:waypoint x="690" y="120" />
+      </bpmndi:BPMNEdge>
+      
+      <bpmndi:BPMNEdge id="Flow_History_To_End_di" bpmnElement="Flow_History_To_End">
+        <di:waypoint x="790" y="120" />
+        <di:waypoint x="842" y="120" />
+      </bpmndi:BPMNEdge>
+      
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn2:definitions>
